@@ -1,0 +1,120 @@
+---
+title: "Predicting classe Variable"
+author: "Alex Ng"
+date: "20 August 2016"
+---
+## 1. Introduction
+This paper describes the analysis done to develop a model to predict the "classe" variable. A training data set and a test set are provided for the analysis. The dataset contains data collected from accelerometers on the belt, forearm, arm and dumbell of 6 participants, while performing weightlighting exercises. The "classe" variable classifies if they hav been performing the barbell lifts correctly (classe = A) or incorrectly (classe = B, C, D, E). This paper will describe the analyses and decisions made to create the final model to be used to predict the "classe" varaible based on the accelerometer data.
+
+## 2. Setup - Load Necessary Libraries
+```{r setup, include=FALSE}
+library(caret)
+library(randomForest)
+library(rpart)
+library(rpart.plot)
+library(plyr)
+library(dplyr)
+library(gbm)
+library(survival)
+library(splines)
+library(parallel)
+library(MASS)
+```
+
+## 3. Load Data
+```{r packages, echo=TRUE}
+#URL paths to the training and test data sets
+trainLink <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+testLink <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+
+fileTrain <- "pml-training.csv"
+fileTest <- "pml-testing.csv"
+
+#Load the training data; download if necessary.
+if(file.exists(fileTrain))
+{
+  inTraining <- read.csv(fileTrain, na.string=c("NA","DIV/0!","" ))
+}else 
+{
+  download.file(trainLink,fileTrain)
+  inTraining <- read.csv(fileTrain, na.string=c("NA","DIV/0!","" )) 
+}
+
+#Load the test data; download if necessary.
+if(file.exists(fileTest))
+{
+  inTesting <- read.csv(fileTest, na.string=c("NA","DIV/0!","" ))
+}else 
+{
+  download.file(testLink,fileTest)
+  inTesting <- read.csv(fileTest, na.string=c("NA","DIV/0!","" )) 
+}
+```
+
+## 4. Data Pre-processing
+Perform data pre-processing to remove unnecessary variables, variables with neligible variance and variables with lots of missing data (NA).
+```{r Data Pre-process }
+dim(inTraining)
+dim(inTesting)
+
+##Remove variables with neligible variance
+nearZeroVariance <- nearZeroVar(inTraining)
+print(nearZeroVariance)
+inTraining <- inTraining[,-nearZeroVariance]
+
+##Remove variables with lots of NA, which can distort the results
+sumNAs <- apply(inTraining,2,function(x) {sum(is.na(x))})
+percentNAs <- sumNAs / nrow(inTraining)
+inTraining <- inTraining[,percentNAs < 0.20]
+
+##Remove variables not of interest such: "X", ""user_name", "raw_timestamp_part_1", "raw_timestamp_part_2", "cvtd_timestamp", "num_window" 
+inTraining<- inTraining[,-c(1,2,3,4,5,6)]
+
+#Remaining variables
+names(inTraining)
+dim(inTraining)
+```
+
+## 5. Training Data Partitioning
+As the training set has a large number of observations, it will be sub-divided in order to perfrom cross-validation.
+```{r Partition Dataset}
+partition <- createDataPartition(y=inTraining$classe, p = 0.7, list=FALSE)
+inTraining.train <- inTraining[partition,]
+inTraining.validate <- inTraining[-partition,]
+```
+
+## 6. Model Selection
+Explore the 2 different models using 2 different prediction methods (Random Forest, Linear Discriminant Analysis). Train the models using the training data set and cross-validate the model using the validation data set. 
+
+## 6.1 Random Forest Model (RF)
+The first model is based on Random Forest. Train the model using the training set and then use the model to predict against the cross-validation data set.
+```{r RF Model}
+set.seed(100)
+#Model 1: Random Forest
+modelFit.rf <- train(classe ~., data=inTraining.train, method="rf")
+predict1 <- predict(modelFit.rf, inTraining.validate)
+confusionMatrix(predict1, inTraining.validate$classe)
+```
+The RF model achieved an accuracy of 99.22%; out of sample error rate of 0.78%.
+
+## 6.2 Linear Discrimination Analysis (LDA)
+The second model is based on Linear Discrimination Analysis. Train the model using the training set and then use the model to predict against the cross-validation data set
+```{r LDA Model, }
+#Model 32 LDA
+modelFit.lda <- train(classe ~., data=inTraining.train, method = "lda")
+predict2 <- predict(modelFit.lda, inTraining.validate)
+confusionMatrix(predict2, inTraining.validate$classe)
+```
+The LDA model achieved an accuracy of 69.86%; out of sample error rate of 30.14%.
+
+## 7. Final Model
+The random forest (RF) model was chosen as the final model because it has very high accuracy: 99.22% . Its estimated out of sample error rate is (1- accuracy) = 0.78%.
+The model is then used to predict the "classe" for the Testing data set. 
+```{r Final Model}
+predictTest.rf <- predict(modelFit.rf, inTesting)
+# Prediction results
+predictTest.rf
+```
+
+## 8. Conclusion
+The results of the chosen model (RF) were submitted for the Course Project Prediction Quiz, and were 100% accurate for all 20 test samples. 
