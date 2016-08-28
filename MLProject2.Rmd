@@ -1,0 +1,127 @@
+---
+title: "Predicting classe Variable"
+author: "Alex Ng"
+date: "20 August 2016"
+---
+## 1. Introduction
+This paper describes the analysis done to develop a model to predict the "classe" variable. A training data set and a test set were provided for the analysis. The dataset contains data collected from accelerometers on the belt, forearm, arm and dumbell of 6 participants, while performing one set of 10 repetitions of the Unilateral Dumbbell Biceps Curl. The "classe" variable classifies if they have performed the exercise correctly (classe = A) or incorrectly (classe = B, C, D, E):  
+
+ * A Exactly to specifications
+ * B Throwing the elbows to the front
+ * C Lifting the dubmbbell only halfway
+ * D Lowering the dumbbell only halfway
+ * E Throwing the hips to the front
+
+## 2. Setup - Load Libraries
+```{r setup, cache=TRUE, results=FALSE, message=FALSE, warning=FALSE}
+library(caret)
+library(randomForest)
+library(rpart)
+library(rpart.plot)
+library(plyr)
+library(dplyr)
+```
+
+## 3. Load Data
+Load the training and test data sets for the analysis. Download the files if not currently available.
+```{r packages, cache=TRUE, echo=TRUE}
+#URL paths to the training and test data sets
+trainLink <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+testLink <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+
+fileTrain <- "pml-training.csv"
+fileTest <- "pml-testing.csv"
+
+#Load the training data; download if necessary.
+if(file.exists(fileTrain))
+{
+  inTraining <- read.csv(fileTrain, na.string=c("NA","DIV/0!","" ))
+}else 
+{
+  download.file(trainLink,fileTrain)
+  inTraining <- read.csv(fileTrain, na.string=c("NA","DIV/0!","" )) 
+}
+
+#Load the test data; download if necessary.
+if(file.exists(fileTest))
+{
+  inTesting <- read.csv(fileTest, na.string=c("NA","DIV/0!","" ))
+}else 
+{
+  download.file(testLink,fileTest)
+  inTesting <- read.csv(fileTest, na.string=c("NA","DIV/0!","" )) 
+}
+```
+
+## 4. Data Pre-processing
+Perform data pre-processing to remove unnecessary variables, variables with neligible variance and variables with lots of missing data (NA).
+```{r Data Pre-process, cache=TRUE }
+dim(inTraining)
+dim(inTesting)
+
+#Remove variables with neligible variance to prevent unnecessary processing
+nearZeroVariance <- nearZeroVar(inTraining)
+#The following variables with neligible variance will be removed 
+print(nearZeroVariance)
+inTraining <- inTraining[,-nearZeroVariance]
+
+#Remove variables with lots of NA, which can distort the results; threshold set at less than 20% of NA values allowed.
+sumNAs <- apply(inTraining,2,function(x) {sum(is.na(x))})
+percentNAs <- sumNAs / nrow(inTraining)
+inTraining <- inTraining[,percentNAs < 0.20]
+
+#Remove variables not of interest such: "X", ""user_name", "raw_timestamp_part_1", "raw_timestamp_part_2", "cvtd_timestamp", "num_window" 
+inTraining<- inTraining[,-c(1,2,3,4,5,6)]
+
+#Remaining variables
+names(inTraining)
+#Final dimensions of the training data set
+dim(inTraining)
+```
+
+## 5. Training Data Partitioning
+As the training set has a large number of observations, it will be sub-divided in order to perform cross-validation. 30% of the original training data set will be cut out and used for cross-validation.
+```{r Partition Dataset, cache=TRUE}
+partition <- createDataPartition(y=inTraining$classe, p = 0.7, list=FALSE)
+inTraining.train <- inTraining[partition,]
+inTraining.validate <- inTraining[-partition,]
+```
+
+## 6. Model Selection
+Explore 2 different prediction models (Decision Trees, Random Forest). Train the models using the training data set and cross-validate the model using the validation data set. 
+
+## 6.1 Decision Tree
+The first model is based on Decision Tree. Train the model using the training set and then use the model to predict against the cross-validation data set.
+```{r Decision Tree Model,cache=TRUE }
+#Model 1: Decision Tree
+set.seed(100)
+modelFit.rpart <- train(classe ~., data=inTraining.train, method = "rpart")
+predict.rpart <- predict(modelFit.rpart, inTraining.validate)
+cvresults.rpart <- confusionMatrix(predict.rpart, inTraining.validate$classe)
+cvresults.rpart
+```
+The Decision Tree model achieved an accuracy of only `r round(cvresults.rpart$overall[1]*100, digits=1)`%; sample error rate of `r 100 - (round(cvresults.rpart$overall[1]*100, digits=1))`% (based on 1 - accuracy). This model is not suitable based on the low accuracy rate. 
+
+## 6.2 Random Forest Model (RF)
+The second model is based on Random Forest. Train the model using the training set and then use the model to predict against the cross-validation data set.
+```{r RF Model, cache=TRUE}
+#Model 2: Random Forest
+set.seed(100)
+modelFit.rf <- train(classe ~., data=inTraining.train, method="rf")
+predict.rf <- predict(modelFit.rf, inTraining.validate)
+cvresults.rf <- confusionMatrix(predict.rf, inTraining.validate$classe)
+cvresults.rf
+```
+The Random Forest model achieved an accuracy of `r round(cvresults.rf$overall[1]*100, digits=1)`%; sample error rate of `r 100 - (round(cvresults.rf$overall[1]*100, digits=1))`% (based on 1 - accuracy). The accuracy achieved by the Random Forest model is very high, almost 100%.
+
+## 7. Final Model
+The Random Forest (RF) model was chosen as the final model because it has very high accuracy: `r round(cvresults.rf$overall[1]*100, digits=1)`%. The model is then used to predict the "classe" variable for the Testing data set. 
+```{r Final Model, cache=TRUE}
+predictTest.rf <- predict(modelFit.rf, inTesting)
+# Prediction results
+predictTest.rf
+```
+The prediction results above were submitted for the Course Project Prediction Quiz.
+
+## 8. Conclusion
+The results of the chosen model (RF) were submitted for the Course Project Prediction Quiz, and were 100% accurate for all 20 test samples.
